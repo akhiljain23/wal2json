@@ -1,0 +1,76 @@
+---
+
+    - name: ansible uri test
+      hosts: localhost
+      vars:
+        region: eu-gb
+        username: repl
+        database_name: ibmclouddb
+        slot_name: myslotname
+        iam_token: Bearer eyJraWQiOiIyMDIxMDEyMDE4MzUiLCJhbGciOiJSUzI1NiJ9.eyJpYW1faWQiOiJJQk1pZC01NTAwMDNSMkE3IiwiaWQiOiJJQk1pZC01NTAwMDNSMkE3IiwicmVhbG1pZCI6IklCTWlkIiwianRpIjoiMzBiNmMzOTYtNGM3Zi00MGVhLWIxMjctZTZlNGQ5YzI4NzgzIiwiaWRlbnRpZmllciI6IjU1MDAwM1IyQTciLCJnaXZlbl9uYW1lIjoiQWtoaWwiLCJmYW1pbHlfbmFtZSI6IkphaW4iLCJuYW1lIjoiQWtoaWwgSmFpbiIsImVtYWlsIjoiYWtqYWluMjVAaW4uaWJtLmNvbSIsInN1YiI6ImFramFpbjI1QGluLmlibS5jb20iLCJhY2NvdW50Ijp7InZhbGlkIjp0cnVlLCJic3MiOiI0NjUzNzE3ZDU4MmE0ZGRjOTg5NTcwMmQwYWNhMzc3MCIsImltc191c2VyX2lkIjoiNzY5NjY5NSIsImZyb3plbiI6dHJ1ZSwiaW1zIjoiMTk0NzYyNyJ9LCJpYXQiOjE2MTEzMTIzNzAsImV4cCI6MTYxMTMxNTk3MCwiaXNzIjoiaHR0cHM6Ly9pYW0uY2xvdWQuaWJtLmNvbS9pZGVudGl0eSIsImdyYW50X3R5cGUiOiJ1cm46aWJtOnBhcmFtczpvYXV0aDpncmFudC10eXBlOmFwaWtleSIsInNjb3BlIjoiaWJtIG9wZW5pZCIsImNsaWVudF9pZCI6ImJ4IiwiYWNyIjoxLCJhbXIiOlsicHdkIl19.EMAstbuynndZzeI8eIEFv3Tr0T2GP_Kgk2ApQ0tVyi0v2xJi8yHRuakJJ0a4juFtu0oZ7QsD_CpOKx4zY9cTzqIprFXm1Rv18YcLUncAWQuFAmmMS6o5C-vrlGuuNYK9c8VytY8gdnM4dx9IHqUZZ7fHud5J-_3UADYZf1AHgAGS2ZNX7oAHGUy5EQbMjqCPv9tfLEfe6OxcCkTspolV2zsPzAVLzcapX9ZP_OrPcceLQuGurKqxBybIJzlv3nv29LE2cgkOQRsiO0KwAAhdyDa6-_3ASaNe3uPA4RRyNiQzlBLFEd18oFW5jMu6NbvdlE4yOqKYQuOk1XIret07Bw
+        id: crn%3Av1%3Abluemix%3Apublic%3Adatabases-for-postgresql%3Aeu-gb%3Aa%2F4653717d582a4ddc9895702d0aca3770%3A9e921776-c8ef-4ce8-8445-17e6038117a0%3A%3A
+    
+    
+      tasks:
+        - name: Configure the DB Deployment
+          uri:
+              url: https://api.{{region}}.databases.cloud.ibm.com/v4/ibm/deployments/{{id}}/configuration
+              method: PATCH
+              headers: 
+                Authorization: "{{iam_token}}"
+                Content-Type: application/json
+              body_format: json
+              body: {"configuration": { "wal_level": "logical", "max_replication_slots": 21, "max_wal_senders": 21 }}
+              status_code: 200
+          register: configure_patch
+          ignore_errors: yes
+    
+        - name: DEBUG / GOT INFO
+          debug:
+              msg: "{{ configure_patch }}"
+          when: configure_patch.status == 200
+
+        - name: sleep to wait for task completion
+          command: /bin/sleep 15
+
+        - name: Change repl user password
+          uri:
+              url: https://api.{{region}}.databases.cloud.ibm.com/v4/ibm/deployments/{{id}}/users/{{username}}
+              method: PATCH
+              headers: 
+                Authorization: "{{iam_token}}"
+                Content-Type: application/json
+              body_format: json
+              body: {"user": {"password": "Abc1234abc"}}
+              status_code: 202
+          register: password_patch
+          ignore_errors: yes
+        
+        - name: DEBUG / GOT INFO
+          debug:
+              msg: "{{ password_patch }}"
+          when: password_patch.status == 202
+
+        - name: sleep to wait for task completion
+          command: /bin/sleep 15
+
+        - name: Create replication slot
+          uri:
+              url: https://api.{{region}}.databases.cloud.ibm.com/v4/ibm/deployments/{{id}}/postgresql/logical_replication_slots
+              method: POST
+              headers: 
+                Authorization: "{{iam_token}}"
+                Content-Type: application/json
+              body_format: json
+              body: {"logical_replication_slot": {"name": "{{slot_name}}","database_name": "{{database_name}}", "plugin_type": "wal2json"}}
+              status_code: 202
+          register: replslot_post
+          ignore_errors: yes
+        
+        - name: DEBUG / GOT INFO
+          debug:
+              msg: "{{ replslot_post }}"
+          when: replslot_post.status == 202
+
+        - name: sleep to wait for task completion
+          command: /bin/sleep 15
